@@ -36,6 +36,8 @@ type Hypothesis = {
   evidence: Array<{ event_id: string; relationship: string; explanation: string; weight: number }>;
 };
 type User = { id: string; email: string; display_name: string; role: string };
+type RetentionPolicy = { event_days: number; artifact_days: number; audit_days: number; ai_generation_days: number; updated_at?: string };
+type LegalHold = { id: string; incident_id: string | null; incident_title: string | null; reason: string; created_at: string; released_at: string | null; release_reason: string | null };
 
 type ApiError = Error & { code?: string };
 
@@ -88,6 +90,9 @@ export function IncidentAtlas(): React.JSX.Element {
   const [note, setNote] = useState("");
   const [authMode, setAuthMode] = useState<"login" | "setup">("login");
   const [busy, setBusy] = useState(false);
+  const [activePage, setActivePage] = useState<"overview" | "settings">("overview");
+  const [retentionPolicy, setRetentionPolicy] = useState<RetentionPolicy>();
+  const [legalHolds, setLegalHolds] = useState<LegalHold[]>([]);
 
   const loadWorkspace = useCallback(async (incidentId?: string) => {
     const [hostResult, incidentResult, eventResult] = await Promise.all([
@@ -284,6 +289,84 @@ export function IncidentAtlas(): React.JSX.Element {
     }
   }
 
+  async function loadRetentionSettings(): Promise<void> {
+    const [policyResult, holdsResult] = await Promise.all([
+      api<{ policy: RetentionPolicy }>("/api/v1/settings/retention"),
+      api<{ legal_holds: LegalHold[] }>("/api/v1/legal-holds"),
+    ]);
+    setRetentionPolicy(policyResult.policy);
+    setLegalHolds(holdsResult.legal_holds);
+  }
+
+  async function saveRetention(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const policy = {
+      event_days: Number(form.get("event_days")),
+      artifact_days: Number(form.get("artifact_days")),
+      audit_days: Number(form.get("audit_days")),
+      ai_generation_days: Number(form.get("ai_generation_days")),
+      confirm_immediate_expiry: false,
+    };
+    setBusy(true);
+    try {
+      try {
+        await api("/api/v1/settings/retention", {
+          method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: JSON.stringify(policy),
+        });
+      } catch (caught) {
+        if ((caught as ApiError).code !== "retention_reduction_confirmation_required") throw caught;
+        const confirmed = window.confirm("Shorter retention will immediately delete evidence older than the new limits, except evidence under a legal hold. Continue?");
+        if (!confirmed) return;
+        await api("/api/v1/settings/retention", {
+          method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: JSON.stringify({ ...policy, confirm_immediate_expiry: true }),
+        });
+      }
+      await loadRetentionSettings();
+    } catch (caught) {
+      setErrorMessage((caught as ApiError).code ?? "Retention policy could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createLegalHold(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const incidentId = String(form.get("incident_id") ?? "");
+    setBusy(true);
+    try {
+      await api("/api/v1/legal-holds", {
+        method: "POST", headers: { "content-type": "application/json", "x-csrf-token": csrf },
+        body: JSON.stringify({ ...(incidentId ? { incident_id: incidentId } : {}), reason: form.get("reason") }),
+      });
+      formElement.reset();
+      await loadRetentionSettings();
+    } catch (caught) {
+      setErrorMessage((caught as ApiError).code ?? "Legal hold could not be created.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function releaseLegalHold(hold: LegalHold): Promise<void> {
+    if (!window.confirm("Release this legal hold? Retention may then remove the covered evidence.")) return;
+    const reason = window.prompt("Reason for releasing this legal hold:");
+    if (!reason?.trim()) return;
+    setBusy(true);
+    try {
+      await api(`/api/v1/legal-holds/${hold.id}/release`, {
+        method: "POST", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: JSON.stringify({ reason }),
+      });
+      await loadRetentionSettings();
+    } catch (caught) {
+      setErrorMessage((caught as ApiError).code ?? "Legal hold could not be released.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) return <div className="loading-screen">Opening the incident record…</div>;
   if (!user) {
     return <main className="auth-screen">
@@ -316,12 +399,14 @@ export function IncidentAtlas(): React.JSX.Element {
       <div className="brand"><div className="brand-mark">IA</div><span>Incident<span>Atlas</span></span></div>
       <div className="workspace-switch"><span className="workspace-dot" />{user.display_name}<span className="chevron">⌄</span></div>
       <div className="side-label">INVESTIGATE</div>
-      <button className="nav-item active"><span className="nav-icon">⌁</span>Overview</button>
-      <button className="nav-item" onClick={() => setSelectedIncident("")}><span className="nav-icon">◷</span>Change timeline</button>
+      <button className={`nav-item ${activePage === "overview" ? "active" : ""}`} onClick={() => setActivePage("overview")}><span className="nav-icon">⌁</span>Overview</button>
+      <button className="nav-item" onClick={() => { setActivePage("overview"); setSelectedIncident(""); }}><span className="nav-icon">◷</span>Change timeline</button>
       <button className="nav-item" onClick={() => document.getElementById("incident-select")?.focus()}><span className="nav-icon">◉</span>Incidents <span className="nav-count">{incidents.filter((item) => item.status !== "resolved" && item.status !== "closed").length}</span></button>
       <div className="side-label second">ENVIRONMENT</div>
       <button className="nav-item" onClick={() => setSelectedHost("")}><span className="nav-icon">⌂</span>Hosts <span className="nav-count">{hosts.length}</span></button>
       <button className="nav-item" onClick={() => setErrorMessage("Collector enrollment and health controls are being implemented.")}><span className="nav-icon">↯</span>Collectors</button>
+      <div className="side-label second">ADMINISTRATION</div>
+      <button className={`nav-item ${activePage === "settings" ? "active" : ""}`} onClick={() => { setActivePage("settings"); void loadRetentionSettings().catch((caught: unknown) => setErrorMessage((caught as ApiError).code ?? "Settings could not be loaded.")); }}><span className="nav-icon">⚙</span>Retention & holds</button>
       <div className="sidebar-bottom">
         <div className="collector-health"><span className="health-dot" /><div><strong>{hosts.length} hosts reporting</strong><small>Collector status</small></div><span className="side-arrow">›</span></div>
         <div className="privacy-note"><span>◇</span><p>Redaction runs on the monitored host before events are sent.</p></div>
@@ -336,20 +421,38 @@ export function IncidentAtlas(): React.JSX.Element {
 
       <div className="page-content">
         <section className="page-heading">
-          <div><div className="eyebrow">INCIDENT RESPONSE · {new Intl.DateTimeFormat(undefined, { dateStyle: "full" }).format(new Date()).toUpperCase()}</div><h1>{activeIncident ? activeIncident.title : "Operational overview"}</h1><p>{activeIncident ? `Started ${displayDate(activeIncident.started_at)} · ${activeIncident.affected_services.join(", ") || "Services not specified"}` : "A concise record of what changed across your environment."}</p></div>
-          <div className="heading-actions"><button className="button secondary" onClick={() => void loadWorkspace(selectedIncident || undefined)}>↻ <span>Refresh</span></button><button className="button primary" onClick={() => document.getElementById("new-incident-title")?.focus()}>＋ <span>Declare incident</span></button></div>
+          <div><div className="eyebrow">{activePage === "settings" ? "DATA LIFECYCLE" : `INCIDENT RESPONSE · ${new Intl.DateTimeFormat(undefined, { dateStyle: "full" }).format(new Date()).toUpperCase()}`}</div><h1>{activePage === "settings" ? "Retention and legal holds" : activeIncident ? activeIncident.title : "Operational overview"}</h1><p>{activePage === "settings" ? "Control how long operational evidence is retained and preserve investigations under legal hold." : activeIncident ? `Started ${displayDate(activeIncident.started_at)} · ${activeIncident.affected_services.join(", ") || "Services not specified"}` : "A concise record of what changed across your environment."}</p></div>
+          {activePage === "overview" && <div className="heading-actions"><button className="button secondary" onClick={() => void loadWorkspace(selectedIncident || undefined)}>↻ <span>Refresh</span></button><button className="button primary" onClick={() => document.getElementById("new-incident-title")?.focus()}>＋ <span>Declare incident</span></button></div>}
         </section>
 
-        <section className="metric-grid">
+        {activePage === "overview" && <section className="metric-grid">
           <div className="metric-card"><div className="metric-top"><span>OPEN INCIDENTS</span><span className="metric-icon red">◉</span></div><strong>{incidents.filter((item) => !["resolved", "closed"].includes(item.status)).length.toString().padStart(2, "0")}</strong><small>{incidents.length ? "Across this workspace" : "No active investigations"}</small></div>
           <div className="metric-card"><div className="metric-top"><span>RECENT CHANGES</span><span className="metric-icon blue">⌁</span></div><strong>{events.length.toString().padStart(2, "0")}</strong><small>Events in the current view</small></div>
           <div className="metric-card"><div className="metric-top"><span>HOSTS REPORTING</span><span className="metric-icon green">⌂</span></div><strong>{hosts.length.toString().padStart(2, "0")}</strong><small>Last seen within 24 hours</small></div>
           <div className="metric-card health-metric"><div className="metric-top"><span>INGESTION HEALTH</span><span className="health-dot" /></div><strong className="healthy-text">Healthy</strong><small>API and database connected</small></div>
-        </section>
+        </section>}
 
         {errorMessage && <div className="notice" role="status"><span>{errorMessage.replaceAll("_", " ")}</span><button onClick={() => setErrorMessage("")}>×</button></div>}
 
-        <section className="investigation-grid">
+        {activePage === "settings" ? <section className="settings-grid">
+          <div className="panel settings-panel">
+            <div className="panel-heading"><div><div className="panel-title">Retention policy</div><p>Days retained independently by evidence class</p></div></div>
+            {retentionPolicy ? <form className="settings-form" onSubmit={saveRetention}>
+              {([ ["event_days", "Operational events", "Normalized timeline records"], ["artifact_days", "Evidence artifacts", "Sanitized snapshots and diffs"], ["audit_days", "Audit history", "Administrative action records"], ["ai_generation_days", "AI generations", "Draft output and provenance"] ] as const).map(([name, label, description]) => <label key={name}>{label}<small>{description}</small><div><input name={name} type="number" min="1" max="3650" defaultValue={retentionPolicy[name]} required /><span>days</span></div></label>)}
+              <p className="settings-help">Shortening a limit requires confirmation and queues cleanup. Each worker batch handles at most 100 records; active legal holds are preserved.</p>
+              {user.role === "owner" || user.role === "admin" ? <button className="button primary" disabled={busy}>Save retention policy</button> : <p className="settings-help">An organization owner or admin can change these settings.</p>}
+            </form> : <div className="settings-loading">Loading retention policy…</div>}
+          </div>
+          <div className="panel settings-panel">
+            <div className="panel-heading"><div><div className="panel-title">Legal holds</div><p>Preserve all events or a selected incident window</p></div></div>
+            {(user.role === "owner" || user.role === "admin") && <form className="settings-form" onSubmit={createLegalHold}>
+              <label>Coverage<small>A global hold covers all organization evidence</small><select name="incident_id"><option value="">Entire organization</option>{incidents.map((incident) => <option key={incident.id} value={incident.id}>{incident.title}</option>)}</select></label>
+              <label>Reason<small>Recorded in the audit history</small><textarea name="reason" rows={3} maxLength={2000} required placeholder="Why must this evidence be preserved?" /></label>
+              <button className="button secondary" disabled={busy}>Enable legal hold</button>
+            </form>}
+            {!legalHolds.length ? <div className="settings-loading">No legal holds have been recorded.</div> : <div className="hold-list">{legalHolds.map((hold) => <article className="hold-item" key={hold.id}><div><strong>{hold.incident_title ?? "Entire organization"}</strong><small>{displayDate(hold.created_at)} · {hold.released_at ? `Released ${displayDate(hold.released_at)}` : "Active"}</small><p>{hold.reason}</p>{hold.release_reason && <small>Release reason: {hold.release_reason}</small>}</div>{!hold.released_at && (user.role === "owner" || user.role === "admin") && <button className="button secondary" disabled={busy} onClick={() => void releaseLegalHold(hold)}>Release</button>}</article>)}</div>}
+          </div>
+        </section> : <section className="investigation-grid">
           <div className="timeline-card panel">
             <div className="panel-heading"><div><div className="panel-title">Change timeline</div><p>{activeIncident ? "Changes in the incident window" : "Recent operational changes"}</p></div><div className="filter-row">
               <select id="incident-select" value={selectedIncident} onChange={(event) => void selectIncident(event.target.value)} aria-label="Incident window">
@@ -388,7 +491,7 @@ export function IncidentAtlas(): React.JSX.Element {
               <button className="button secondary full postmortem-button" onClick={() => void downloadPostmortem()} disabled={busy}>{busy ? "Preparing draft…" : "Download deterministic postmortem draft"}</button>
             </div> : <div className="panel incident-form-panel"><div className="panel-heading"><div><div className="panel-title">Start an investigation</div><p>Declare an incident to reconstruct its time window</p></div></div><form className="incident-form" onSubmit={createIncident}><label htmlFor="new-incident-title">Incident title</label><input id="new-incident-title" name="title" placeholder="e.g. API returning 502 errors" required /><div className="form-split"><label>Started at<input type="datetime-local" name="started_at" defaultValue={new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16)} required /></label><label>Severity<select name="severity"><option value="medium">Medium</option><option value="low">Low</option><option value="high">High</option><option value="critical">Critical</option></select></label></div><label htmlFor="affected-services">Affected services <span>(comma separated)</span></label><input id="affected-services" name="affected_services" placeholder="api, checkout" /><button className="button primary full" disabled={busy}>Create incident window</button></form></div>}
           </aside>
-        </section>
+        </section>}
       </div>
     </main>
   </div>;

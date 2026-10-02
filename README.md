@@ -71,6 +71,8 @@ run `npm run test:integration`.
   human may mark a cause as confirmed.
 - Postmortems are offline Markdown drafts with event IDs, evidence digests,
   and human feedback attached.
+- Retention is configurable by evidence class; legal holds protect incident
+  evidence from asynchronous cleanup.
 - Outbound product analytics default to off.
 
 See [docs/privacy.md](docs/privacy.md) and [SECURITY.md](SECURITY.md).
