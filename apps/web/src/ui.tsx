@@ -225,6 +225,28 @@ export function IncidentAtlas(): React.JSX.Element {
     }
   }
 
+  async function downloadPostmortem(): Promise<void> {
+    if (!selectedIncident) return;
+    setBusy(true);
+    try {
+      const result = await api<{ markdown: string }>(`/api/v1/incidents/${selectedIncident}/postmortem`, {
+        method: "POST", headers: { "content-type": "application/json", "x-csrf-token": csrf }, body: "{}",
+      });
+      const fileUrl = URL.createObjectURL(new Blob([result.markdown], { type: "text/markdown;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = fileUrl;
+      link.download = `incidentatlas-${selectedIncident}-postmortem.md`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(fileUrl), 1_000);
+    } catch (caught) {
+      setErrorMessage((caught as ApiError).code ?? "Postmortem draft could not be generated.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function updateHypothesis(hypothesisId: string, status: string): Promise<void> {
     if (!selectedIncident) return;
     try {
@@ -363,6 +385,7 @@ export function IncidentAtlas(): React.JSX.Element {
             {activeIncident ? <div className="panel hypotheses-panel">
               <div className="panel-heading"><div><div className="panel-title">Possible contributors</div><p>Evidence-linked deterministic suggestions</p></div><button className="icon-button small" title="Recalculate" onClick={() => void generateHypotheses()} disabled={busy}>↻</button></div>
               {hypotheses.length === 0 ? <div className="hypothesis-empty"><p>No hypotheses have been generated for this incident.</p><button className="button secondary full" onClick={() => void generateHypotheses()} disabled={busy}>{busy ? "Scoring evidence…" : "Analyze incident window"}</button></div> : <div className="hypothesis-list">{hypotheses.map((hypothesis) => <article className="hypothesis" key={hypothesis.id}><div className="hypothesis-score"><strong>{Math.round(hypothesis.confidence * 100)}%</strong><small>evidence score</small></div><div className="hypothesis-copy"><strong>{hypothesis.title}</strong><p>{hypothesis.description}</p><small>{hypothesis.evidence.length} supporting evidence link{hypothesis.evidence.length === 1 ? "" : "s"} · {hypothesis.status.replaceAll("_", " ")}</small><div className="feedback-actions"><button onClick={() => void updateHypothesis(hypothesis.id, "confirmed_by_human")}>Confirm</button><button onClick={() => void updateHypothesis(hypothesis.id, "rejected")}>Reject</button><button onClick={() => void updateHypothesis(hypothesis.id, "investigating")}>Investigate</button></div></div></article>)}</div>}
+              <button className="button secondary full postmortem-button" onClick={() => void downloadPostmortem()} disabled={busy}>{busy ? "Preparing draft…" : "Download deterministic postmortem draft"}</button>
             </div> : <div className="panel incident-form-panel"><div className="panel-heading"><div><div className="panel-title">Start an investigation</div><p>Declare an incident to reconstruct its time window</p></div></div><form className="incident-form" onSubmit={createIncident}><label htmlFor="new-incident-title">Incident title</label><input id="new-incident-title" name="title" placeholder="e.g. API returning 502 errors" required /><div className="form-split"><label>Started at<input type="datetime-local" name="started_at" defaultValue={new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16)} required /></label><label>Severity<select name="severity"><option value="medium">Medium</option><option value="low">Low</option><option value="high">High</option><option value="critical">Critical</option></select></label></div><label htmlFor="affected-services">Affected services <span>(comma separated)</span></label><input id="affected-services" name="affected_services" placeholder="api, checkout" /><button className="button primary full" disabled={busy}>Create incident window</button></form></div>}
           </aside>
         </section>

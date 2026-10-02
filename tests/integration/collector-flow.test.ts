@@ -121,7 +121,7 @@ test("collector enrollment, durable event delivery, and incident timeline work e
     change_kind: "update",
     actor: { type: "system" },
     resource: { type: "container", id: "api", name: "api" },
-    summary: "API image changed before the incident",
+    summary: "API image changed before the incident\n## forged section",
     before: { image_digest: "sha256:before" },
     after: { image_digest: "sha256:after", state: "unhealthy" },
     attributes: {},
@@ -146,7 +146,7 @@ test("collector enrollment, durable event delivery, and incident timeline work e
     url: "/api/v1/incidents",
     headers: writeHeaders,
     payload: {
-      title: "Docker deployment regression",
+      title: "Docker deployment regression\n## forged title",
       started_at: new Date(observedAt.getTime() + 60_000).toISOString(),
       severity: "high",
       affected_services: ["api"],
@@ -176,4 +176,19 @@ test("collector enrollment, durable event delivery, and incident timeline work e
   });
   assert.equal(feedback.statusCode, 200);
   assert.equal(feedback.json().hypothesis.status, "confirmed_by_human");
+
+  const postmortem = await app.inject({
+    method: "POST",
+    url: `/api/v1/incidents/${incidentId}/postmortem`,
+    headers: writeHeaders,
+    payload: {},
+  });
+  assert.equal(postmortem.statusCode, 200);
+  assert.equal(postmortem.json().generator, "deterministic-template-v1");
+  assert.deepEqual(postmortem.json().source_event_ids, [eventId]);
+  assert.ok((postmortem.json().markdown as string).includes(`event: \`${eventId}\``));
+  assert.ok(!(postmortem.json().markdown as string).includes("\n## forged"));
+  assert.ok((postmortem.json().markdown as string).includes("\\# forged"));
+  assert.match(postmortem.json().markdown, /confirmed by a human|human feedback/);
+  assert.match(postmortem.json().markdown, /SHA-256/);
 });

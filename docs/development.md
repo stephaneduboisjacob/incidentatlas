@@ -20,6 +20,27 @@ lockfile.
 9. Add Nginx/PostgreSQL operational connectors and artifact handling.
 10. Add retention/legal hold, hardening, deployment docs, and optional AI.
 
+The API also generates an offline deterministic Markdown postmortem draft.
+It requires no AI provider and separates human-confirmed factors from
+unresolved suggestions.
+
+## Validation
+
+```bash
+npm run build
+npm run typecheck
+npm test
+docker compose -f docker-compose.yml -f docker-compose.test.yml up -d
+npm run test:integration
+npm run lint
+cargo test --workspace
+```
+
+The integration tests exercise tenant isolation, collector enrollment,
+idempotent ingestion, timeline scoring, human feedback, and postmortem
+evidence links. Return to the normal private PostgreSQL Compose setup after
+testing with `docker compose up -d`.
+
 ## Safety while dogfooding
 
 Begin in dry-run mode. Review proposed fields and redactions before enabling

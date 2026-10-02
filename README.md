@@ -69,6 +69,8 @@ run `npm run test:integration`.
   default.
 - Every hypothesis must link to supporting or contradicting evidence. Only a
   human may mark a cause as confirmed.
+- Postmortems are offline Markdown drafts with event IDs, evidence digests,
+  and human feedback attached.
 - Outbound product analytics default to off.
 
 See [docs/privacy.md](docs/privacy.md) and [SECURITY.md](SECURITY.md).

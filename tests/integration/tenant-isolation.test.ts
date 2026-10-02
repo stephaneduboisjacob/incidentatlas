@@ -132,6 +132,13 @@ test("tenant-owned events, hosts, artifacts, incidents, and annotations stay iso
   assert.equal(artifact.statusCode, 404);
   const timeline = await app.inject({ method: "GET", url: `/api/v1/incidents/${ids.incidentB}/timeline`, headers: { cookie: `ia_session=${sessionTokenA}` } });
   assert.equal(timeline.statusCode, 404);
+  const postmortem = await app.inject({
+    method: "POST",
+    url: `/api/v1/incidents/${ids.incidentB}/postmortem`,
+    headers: { cookie: `ia_session=${sessionTokenA}`, origin, "x-csrf-token": csrfToken(sessionTokenA), "content-type": "application/json" },
+    payload: {},
+  });
+  assert.equal(postmortem.statusCode, 404);
 
   const annotation = await app.inject({
     method: "POST",
