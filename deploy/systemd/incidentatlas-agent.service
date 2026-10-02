@@ -1,0 +1,43 @@
+[Unit]
+Description=IncidentAtlas operational change collector
+Documentation=https://incidentatlas.btcpay.exchange
+After=network-online.target systemd-journald.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=incidentatlas
+Group=incidentatlas
+SupplementaryGroups=systemd-journal
+ExecStart=/usr/local/bin/incidentatlas-agent run --config /etc/incidentatlas/agent.toml
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadOnlyPaths=/etc/incidentatlas
+ReadWritePaths=/var/lib/incidentatlas
+MemoryMax=256M
+TasksMax=64
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

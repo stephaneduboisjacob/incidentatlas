@@ -37,13 +37,27 @@ existing host database or application services.
 
 ```bash
 cp .env.example .env
+# Replace all four "replace_with_random_hex" values using separate outputs
+# from: openssl rand -hex 32
 npm install
-npm run dev
+npm run build
+docker compose up -d --build
 ```
 
-The first implementation milestones are documented in
-[docs/development.md](docs/development.md). Deployment and collector
-installation instructions will be added as those parts become functional.
+Open the configured public origin and create the first administrator using
+`INCIDENTATLAS_SETUP_TOKEN` from the private `.env` file. The setup endpoint
+locks after the first account is created. The Compose database is isolated
+from any PostgreSQL service already running on the host.
+
+The deployment process and host Nginx integration are documented in
+[docs/deployment.md](docs/deployment.md). See
+[docs/collector.md](docs/collector.md) for current source support and
+privileges.
+
+The production Compose file keeps PostgreSQL on the private Compose network.
+For integration tests, start the stack with the localhost-only test override:
+`docker compose -f docker-compose.yml -f docker-compose.test.yml up -d`, then
+run `npm run test:integration`.
 
 ## Privacy principles
 

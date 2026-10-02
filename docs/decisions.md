@@ -18,6 +18,15 @@ runtime satisfies both. Sources: [Fastify v5 migration guide](https://fastify.de
 development repeatable. API and worker remain separate processes without
 adding a message broker.
 
+The Rust collector pins Clap 4.6.7, Reqwest 0.13.5 with Rustls, Rusqlite
+0.40.2 with bundled SQLite, Serde 1.0.228, and the versions in
+`collector/incidentatlas-agent/Cargo.toml`; `Cargo.lock` fixes transitive
+versions.
+
+The initial exact direct versions are Fastify 5.12.5, Vite 8.3.2, React 19.3.0,
+PostgreSQL client `pg` 8.23.1, Zod 4.6.5, and TypeScript 6.0.3. `package-lock.json`
+records the complete transitive dependency graph.
+
 ## 2026-10-02: explicit SQL and migrations
 
 **Decision:** Use PostgreSQL with a small SQL client and checked-in numbered
@@ -65,3 +74,33 @@ and commercial boundaries.
 
 **Consequences:** The repository currently states that rights are reserved;
 maintainers must choose a license before publishing a usable release.
+
+## 2026-10-02: Rust formatter and linter components
+
+**Decision:** Install the official `rustfmt` and `clippy` rustup components for
+the host's existing stable toolchain.
+
+**Context:** Rust and Cargo were present, but the two components required by
+the repository's stated formatting and lint commands were missing.
+
+**Consequences:** This adds only compiler-matched developer tools; it does not
+install a separate global runtime or application dependency.
+
+## 2026-10-02: private database and scoped dogfood collector
+
+**Decision:** Keep PostgreSQL private to the Compose network in the normal
+deployment. Publish it on loopback only through `docker-compose.test.yml` for
+integration tests. Use an explicit systemd unit allowlist on shared hosts,
+keep Docker collection off, and keep the current host collector in local mode
+until retention and backup/restore workflows are ready.
+
+**Context:** The development server hosts unrelated services. An initial
+dry-run showed that unfiltered lifecycle changes include unrelated unit names;
+the source now supports a narrow allowlist. The first server ingestion check
+also confirmed that collector enrollment and revocation work, but automated
+retention and backups are not implemented.
+
+**Consequences:** The verified collector-to-API path is available, while new
+host events remain in a bounded local queue. The first two startup events
+already accepted by the server remain as evidence; that collector credential
+has been revoked.

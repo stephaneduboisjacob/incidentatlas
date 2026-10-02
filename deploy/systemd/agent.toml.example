@@ -1,0 +1,27 @@
+mode = "dry-run"
+
+[server]
+url = "https://incidentatlas.btcpay.exchange"
+enrollment_token_file = "/etc/incidentatlas/enrollment-token"
+credential_file = "/var/lib/incidentatlas/credential"
+
+[collector]
+queue_path = "/var/lib/incidentatlas/queue.sqlite3"
+queue_max_mb = 256
+batch_max_events = 100
+
+[sources]
+systemd = true
+systemd_units = []
+docker = false
+nginx = false
+postgres = false
+
+[redaction]
+preset = "strict"
+redact_email_addresses = true
+redact_ip_addresses = false
+custom_patterns = []
+
+[watch]
+files = []
