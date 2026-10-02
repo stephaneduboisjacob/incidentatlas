@@ -1,0 +1,33 @@
+{
+  "name": "incidentatlas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
+  },
+  "scripts": {
+    "build": "npm run build --workspace @incidentatlas/event-schema && npm run build --workspace @incidentatlas/correlation && npm run build --workspace @incidentatlas/api && npm run build --workspace @incidentatlas/web && npm run build --workspace @incidentatlas/worker",
+    "dev:api": "npm run dev --workspace @incidentatlas/api",
+    "dev:web": "npm run dev --workspace @incidentatlas/web",
+    "dev:worker": "npm run dev --workspace @incidentatlas/worker",
+    "typecheck": "npm run build --workspace @incidentatlas/event-schema && npm run build --workspace @incidentatlas/correlation && npm run typecheck --workspace @incidentatlas/api && npm run typecheck --workspace @incidentatlas/web && npm run typecheck --workspace @incidentatlas/worker",
+    "test": "npm test --workspace @incidentatlas/event-schema && npm test --workspace @incidentatlas/correlation",
+    "test:integration": "tsx --test tests/integration/*.test.ts",
+    "lint": "npm run typecheck && cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings",
+    "db:migrate": "npm run db:migrate --workspace @incidentatlas/api"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.1",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3"
+  }
+}
