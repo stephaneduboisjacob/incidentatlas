@@ -55,7 +55,25 @@ only. Database and artifact volumes are separate and persistent.
 
 Back up the PostgreSQL volume and artifact volume together. Test restore
 procedures before relying on IncidentAtlas as evidence storage. Retention,
-legal holds, collector enrollment, and revocation are implemented. Do not enable
-connected collection of operational host sources until the operator has tested
-a restore procedure and reviewed the collector's selected sources. The
-development host collector currently remains in local mode.
+legal holds, collector enrollment, and revocation are implemented. Keep
+connected collection of operational host sources off until the operator has
+verified a backup, copied it off-host, and reviewed the collector's selected
+sources. The development host collector currently remains in local mode.
+
+Create a quiesced, private backup and validate it with a restore into a
+temporary database using:
+
+```bash
+deploy/scripts/backup.sh /var/backups/incidentatlas
+deploy/scripts/verify-backup.sh /var/backups/incidentatlas/incidentatlas-<timestamp>
+```
+
+The backup command briefly stops the API and worker, writes a custom PostgreSQL
+dump and artifact archive into a new mode-0700 directory, records row counts
+and checksums, then restarts only services that were running before the backup.
+Collectors continue buffering locally during that interval. The verifier
+checks every artifact against its content digest and restores the database into
+a randomly named temporary database before comparing table counts. It drops
+only that temporary database. Copy verified backups off-host and encrypt them
+for the sensitivity of operational and account data. The scripts do not
+schedule backups or delete previous backup directories.

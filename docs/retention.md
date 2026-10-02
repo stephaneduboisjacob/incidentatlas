@@ -52,7 +52,10 @@ the missing object and completes the metadata purge.
 ## Backups
 
 PostgreSQL metadata and the artifact volume are separate persistent stores.
-Back them up together and test a restore before treating IncidentAtlas as the
-sole incident record. No automated backup or restore job is configured yet.
-The development host collector remains in local mode until a tested backup and
-restore procedure is available.
+`deploy/scripts/backup.sh` quiesces the API and worker, captures both stores,
+and writes checksums and row counts. `deploy/scripts/verify-backup.sh` verifies
+the content-addressed artifact archive and restores PostgreSQL into a temporary
+database to compare table counts. Backups still need to be scheduled and copied
+off-host by the operator. Encrypt backup storage for the sensitivity of
+operational and account data. The development host collector remains in local
+mode until an off-host backup copy and recovery procedure are established.

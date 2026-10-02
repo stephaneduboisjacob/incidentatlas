@@ -52,7 +52,8 @@ from any PostgreSQL service already running on the host.
 The deployment process and host Nginx integration are documented in
 [docs/deployment.md](docs/deployment.md). See
 [docs/collector.md](docs/collector.md) for current source support and
-privileges.
+privileges. Operator-run backup and temporary restore verification scripts
+are in `deploy/scripts/`.
 
 The production Compose file keeps PostgreSQL on the private Compose network.
 For integration tests, start the stack with the localhost-only test override:

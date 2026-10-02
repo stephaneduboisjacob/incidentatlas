@@ -92,14 +92,14 @@ install a separate global runtime or application dependency.
 deployment. Publish it on loopback only through `docker-compose.test.yml` for
 integration tests. Use an explicit systemd unit allowlist on shared hosts,
 keep Docker collection off, and keep the current host collector in local mode
-until a backup/restore procedure is tested.
+until an off-host backup and recovery procedure is established.
 
 **Context:** The development server hosts unrelated services. An initial
 dry-run showed that unfiltered lifecycle changes include unrelated unit names;
 the source now supports a narrow allowlist. The first server ingestion check
 also confirmed that collector enrollment and revocation work. Automated
-retention is now implemented, while tested backups and restore remain
-unavailable.
+retention and operator-run backup/temporary-restore verification are
+implemented; off-host scheduling and recovery remain operator responsibilities.
 
 **Consequences:** The verified collector-to-API path is available, while new
 host events remain in a bounded local queue. The first two startup events
@@ -123,5 +123,6 @@ artifact.
 **Consequences:** Policy reductions require explicit confirmation and queue
 cleanup. Hold changes serialize with cleanup on an organization-scoped lock.
 Expired artifact downloads return `410 Gone`, with digest-addressed metadata
-and cleanup audit records retained. Backups of PostgreSQL and artifact storage
-must still be tested before connected dogfooding.
+and cleanup audit records retained. PostgreSQL restore and artifact digest
+verification can be exercised by the operator scripts; connected dogfooding
+still waits for off-host backups.
