@@ -68,6 +68,9 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://incidentatlas:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/incidentatlas
+      INCIDENTATLAS_ARTIFACT_PATH: /var/lib/incidentatlas/artifacts
+    volumes:
+      - artifacts:/var/lib/incidentatlas/artifacts
     depends_on:
       api:
         condition: service_healthy

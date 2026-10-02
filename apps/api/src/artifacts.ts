@@ -4,7 +4,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 import { getUserSession } from "./auth.js";
 import { inTransaction } from "./database.js";
-import { ArtifactStoreError, readArtifact, storeArtifact } from "./artifact-store.js";
+import { ArtifactStoreError, artifactDigest, readArtifact, storeArtifact } from "./artifact-store.js";
 import { getCollectorIdentity } from "./collectors.js";
 import { newId } from "./security.js";
 
@@ -32,36 +32,38 @@ export function registerArtifactRoutes(app: FastifyInstance, pool: Pool): void {
     }
 
     try {
-      const stored = await storeArtifact(content);
+      const sha256 = artifactDigest(content);
       const artifactId = randomUUID();
       const result = await inTransaction(pool, async (client) => {
-        const inserted = await client.query<{ id: string }>(
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 912843))", [`artifact:${sha256}`]);
+        const existing = await client.query<{ id: string; sha256: string }>(
+          "SELECT id, sha256 FROM artifacts WHERE organization_id = $1 AND sha256 = $2 FOR UPDATE",
+          [collector.organization_id, sha256],
+        );
+        const stored = await storeArtifact(content);
+        if (existing.rows[0]) {
+          await client.query(
+            "UPDATE artifacts SET purged_at = NULL, purge_reason = NULL, created_at = now() WHERE organization_id = $1 AND id = $2",
+            [collector.organization_id, existing.rows[0].id],
+          );
+          return { id: existing.rows[0].id, deduplicated: true };
+        }
+        await client.query(
           `INSERT INTO artifacts (id, organization_id, sha256, object_key, mime_type, size_bytes, source, redaction_status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           ON CONFLICT DO NOTHING RETURNING id`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [artifactId, collector.organization_id, stored.sha256, stored.objectKey, parsed.data.mime_type,
             stored.sizeBytes, `collector:${parsed.data.kind}`, parsed.data.redaction_status],
         );
-        if (inserted.rows[0]) {
-          await client.query(
-            `INSERT INTO audit_events (id, organization_id, action, target_type, target_id, attributes)
-             VALUES ($1, $2, 'artifact.uploaded', 'artifact', $3, $4::jsonb)`,
-            [newId(), collector.organization_id, artifactId, JSON.stringify({ collector_id: collector.id, sha256: stored.sha256, size_bytes: stored.sizeBytes })],
-          );
-          return { id: artifactId, deduplicated: false };
-        }
-        const existing = await client.query<{ id: string; sha256: string }>(
-          `SELECT id, sha256 FROM artifacts
-            WHERE organization_id = $1 AND (id = $2 OR sha256 = $3)
-            LIMIT 1`,
-          [collector.organization_id, artifactId, stored.sha256],
+        await client.query(
+          `INSERT INTO audit_events (id, organization_id, action, target_type, target_id, attributes)
+           VALUES ($1, $2, 'artifact.uploaded', 'artifact', $3, $4::jsonb)`,
+          [newId(), collector.organization_id, artifactId, JSON.stringify({ collector_id: collector.id, sha256: stored.sha256, size_bytes: stored.sizeBytes })],
         );
-        if (existing.rows[0]?.sha256 === stored.sha256) return { id: existing.rows[0].id, deduplicated: true };
-        throw new Error("artifact_id_conflict");
+        return { id: artifactId, deduplicated: false };
       });
+      const stored = { sha256, sizeBytes: content.byteLength };
       return reply.code(201).send({ artifact_id: result.id, sha256: stored.sha256, size_bytes: stored.sizeBytes, deduplicated: result.deduplicated });
     } catch (caught) {
-      if (caught instanceof Error && caught.message === "artifact_id_conflict") return error(reply, 409, "artifact_conflict");
       request.log.error({ event: "artifact.upload.failed", collector_id: collector.id });
       return error(reply, 503, "artifact_storage_unavailable");
     }
@@ -72,21 +74,38 @@ export function registerArtifactRoutes(app: FastifyInstance, pool: Pool): void {
     if (!session) return error(reply, 401, "authentication_required");
     const id = z.uuid().safeParse(request.params.id);
     if (!id.success) return error(reply, 400, "invalid_artifact_id");
-    const result = await pool.query<{ id: string; sha256: string; object_key: string; mime_type: string; size_bytes: string }>(
-      `SELECT id, sha256, object_key, mime_type, size_bytes
-         FROM artifacts WHERE organization_id = $1 AND id = $2`,
-      [session.user.organizationId, id.data],
-    );
-    const artifact = result.rows[0];
-    if (!artifact) return error(reply, 404, "artifact_not_found");
     try {
-      const content = await readArtifact(artifact.object_key, artifact.sha256);
-      if (content.length !== Number(artifact.size_bytes) || content.length > MAX_ARTIFACT_BYTES) return error(reply, 503, "artifact_integrity_failure");
-      await pool.query(
-        `INSERT INTO audit_events (id, organization_id, actor_user_id, action, target_type, target_id, attributes)
-         VALUES ($1, $2, $3, 'artifact.downloaded', 'artifact', $4, $5::jsonb)`,
-        [newId(), session.user.organizationId, session.user.id, artifact.id, JSON.stringify({ sha256: artifact.sha256, size_bytes: content.length })],
-      );
+      const outcome = await inTransaction(pool, async (client) => {
+        const preview = await client.query<{ id: string; sha256: string; purged_at: Date | null }>(
+          "SELECT id, sha256, purged_at FROM artifacts WHERE organization_id = $1 AND id = $2",
+          [session.user.organizationId, id.data],
+        );
+        const first = preview.rows[0];
+        if (!first) return { status: "missing" as const };
+        if (first.purged_at) return { status: "expired" as const };
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 912843))", [`artifact:${first.sha256}`]);
+        const locked = await client.query<{ id: string; sha256: string; object_key: string; size_bytes: string; purged_at: Date | null }>(
+          `SELECT id, sha256, object_key, size_bytes, purged_at FROM artifacts
+            WHERE organization_id = $1 AND id = $2 FOR UPDATE`,
+          [session.user.organizationId, id.data],
+        );
+        const artifact = locked.rows[0];
+        if (!artifact) return { status: "missing" as const };
+        if (artifact.purged_at) return { status: "expired" as const };
+        const content = await readArtifact(artifact.object_key, artifact.sha256);
+        if (content.length !== Number(artifact.size_bytes) || content.length > MAX_ARTIFACT_BYTES) {
+          throw new ArtifactStoreError("integrity_failure");
+        }
+        await client.query(
+          `INSERT INTO audit_events (id, organization_id, actor_user_id, action, target_type, target_id, attributes)
+           VALUES ($1, $2, $3, 'artifact.downloaded', 'artifact', $4, $5::jsonb)`,
+          [newId(), session.user.organizationId, session.user.id, artifact.id, JSON.stringify({ sha256: artifact.sha256, size_bytes: content.length })],
+        );
+        return { status: "ready" as const, artifact, content };
+      });
+      if (outcome.status === "missing") return error(reply, 404, "artifact_not_found");
+      if (outcome.status === "expired") return error(reply, 410, "artifact_expired");
+      const { artifact, content } = outcome;
       return reply
         .type("application/octet-stream")
         .header("content-disposition", `attachment; filename="evidence-${artifact.id}"`)

@@ -147,4 +147,19 @@ test("tenant-owned events, hosts, artifacts, incidents, and annotations stay iso
     payload: { body: "cross-tenant attempt", event_id: ids.eventB },
   });
   assert.equal(annotation.statusCode, 404);
+
+  const writeHeaders = { cookie: `ia_session=${sessionTokenA}`, origin, "x-csrf-token": csrfToken(sessionTokenA), "content-type": "application/json" };
+  const retentionUpdate = await app.inject({
+    method: "PUT", url: "/api/v1/settings/retention", headers: writeHeaders,
+    payload: { event_days: 100, artifact_days: 35, audit_days: 400, ai_generation_days: 31 },
+  });
+  assert.equal(retentionUpdate.statusCode, 200);
+  const tenantBPolicy = await app.inject({ method: "GET", url: "/api/v1/settings/retention", headers: { cookie: `ia_session=${sessionTokenB}` } });
+  assert.equal(tenantBPolicy.statusCode, 200);
+  assert.equal(tenantBPolicy.json().policy.event_days, 90);
+  const crossTenantHold = await app.inject({
+    method: "POST", url: "/api/v1/legal-holds", headers: writeHeaders,
+    payload: { incident_id: ids.incidentB, reason: "Cross-tenant hold attempt" },
+  });
+  assert.equal(crossTenantHold.statusCode, 404);
 });

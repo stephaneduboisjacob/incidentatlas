@@ -13,6 +13,7 @@ import { registerEventRoutes } from "./events.js";
 import { registerIncidentRoutes } from "./incidents.js";
 import { registerArtifactRoutes } from "./artifacts.js";
 import { registerPostmortemRoutes } from "./postmortems.js";
+import { registerRetentionRoutes } from "./retention.js";
 
 const webDirectory = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../../apps/web/dist");
 
@@ -74,6 +75,7 @@ export async function createApp(pool: Pool): Promise<FastifyInstance> {
   registerEventRoutes(app, pool);
   registerIncidentRoutes(app, pool);
   registerPostmortemRoutes(app, pool);
+  registerRetentionRoutes(app, pool);
 
   if (existsSync(resolve(webDirectory, "index.html"))) {
     await app.register(fastifyStatic, { root: webDirectory, prefix: "/", wildcard: false, index: ["index.html"] });

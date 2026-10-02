@@ -1,23 +1,58 @@
 # Retention and evidence lifecycle
 
-The initial schema contains per-organization retention settings and legal-hold
-records. The API and worker do not yet run automatic retention deletion or
-enforce legal holds. The current MVP therefore retains events, audit records,
-incidents, and artifacts until an operator handles them deliberately.
+Retention is configured per organization at `/api/v1/settings/retention` and in
+the web interface under **Retention & holds**. Event, artifact, audit, and
+future AI-generation windows are independent, in days, from 1 through 3650.
+Defaults are 90, 30, 365, and 30 days respectively. AI generation storage is
+not implemented yet; its setting is reserved and does not currently remove
+records.
 
-PostgreSQL metadata and the local artifact volume are separate persistent
-stores. Back them up together and verify a restore before using the installation
-as the sole incident record. No automated backup or restore job is configured
-by the MVP.
+Changing a window to a shorter duration requires an explicit confirmation
+field in the API or a browser confirmation in the interface. The update queues
+asynchronous cleanup. A worker schedules a sweep at least daily, and policy
+changes request an immediate sweep. Each run handles at most 100 events,
+artifacts, and audit records per batch, then requeues itself when more work is
+due. Cleanup is not a synchronous request operation.
 
-The current host collector remains in `local` mode with a bounded SQLite
-queue. It does not send new host events to the server until retention,
-backup/restore, and collector revocation workflows are ready. Collector
-credentials are revocable; revoked collectors remain in the database for
-provenance.
+## Legal holds
 
-Before implementing deletion, the worker must check active legal holds in the
-same organization and write an audit event for every retention action. Event
-and artifact policies should be applied independently. Legal-hold release and
-administrative deletion require an explicit operator action and tenant-scoped
-authorization.
+Organization owners and admins can enable a global hold or a hold for one
+incident. Global holds protect all organization events and artifacts from
+retention. Incident holds protect events that fall within the incident's
+configured before/after time window, along with artifacts referenced by those
+events. Holds have a required reason. Release requires a separate reason and
+records who released the hold, when, and why. Hold creation and release are
+audited. Retention and hold changes serialize on an organization-scoped
+database lock so cleanup cannot race a newly enabled hold.
+
+## What cleanup does
+
+- Expired events are removed in bounded batches. Event-linked annotations are
+  retained with their event reference cleared; hypothesis evidence links and
+  source-event references are cleared while hypothesis feedback remains.
+- Expired artifact payloads are removed from the digest-addressed filesystem.
+  Metadata stays in PostgreSQL with a purge timestamp and reason, so old event
+  evidence references remain traceable and downloads return `410 Gone`.
+  Shared content is only unlinked when no active artifact record references
+  the same digest. Uploading identical evidence later restores its metadata and
+  payload.
+- Expired audit rows are deleted in bounded batches. A new aggregate audit row
+  records the deleted IDs/count; event and artifact cleanup audit records also
+  include identifiers and digests, not the expired payloads.
+- Incidents, hypotheses, legal holds, and user accounts are not automatically
+  deleted by retention.
+
+The worker validates artifact identifiers, confines resolved paths to the
+configured artifact root, checks for symlinks, and verifies SHA-256 before
+unlinking. If cleanup fails, the job is retried and an internal safe error code
+is logged. Postgres metadata and filesystem deletion cannot share one atomic
+transaction: if a process stops after unlink but before commit, the retry sees
+the missing object and completes the metadata purge.
+
+## Backups
+
+PostgreSQL metadata and the artifact volume are separate persistent stores.
+Back them up together and test a restore before treating IncidentAtlas as the
+sole incident record. No automated backup or restore job is configured yet.
+The development host collector remains in local mode until a tested backup and
+restore procedure is available.

@@ -92,15 +92,36 @@ install a separate global runtime or application dependency.
 deployment. Publish it on loopback only through `docker-compose.test.yml` for
 integration tests. Use an explicit systemd unit allowlist on shared hosts,
 keep Docker collection off, and keep the current host collector in local mode
-until retention and backup/restore workflows are ready.
+until a backup/restore procedure is tested.
 
 **Context:** The development server hosts unrelated services. An initial
 dry-run showed that unfiltered lifecycle changes include unrelated unit names;
 the source now supports a narrow allowlist. The first server ingestion check
-also confirmed that collector enrollment and revocation work, but automated
-retention and backups are not implemented.
+also confirmed that collector enrollment and revocation work. Automated
+retention is now implemented, while tested backups and restore remain
+unavailable.
 
 **Consequences:** The verified collector-to-API path is available, while new
 host events remain in a bounded local queue. The first two startup events
 already accepted by the server remain as evidence; that collector credential
 has been revoked.
+
+## 2026-10-02: bounded retention and legal holds
+
+**Decision:** Run organization-scoped retention in bounded PostgreSQL worker
+batches. Keep artifact metadata after payload expiry, and preserve event-linked
+investigation notes while clearing references to deleted event bodies. A
+global legal hold protects all organization evidence; an incident hold covers
+the incident's configured time window and artifacts referenced by events in
+that window.
+
+**Context:** Self-hosted evidence stores need predictable storage limits and
+auditable deletion. Hold creation/release must not race cleanup, and an
+operator needs to distinguish expired evidence from a missing or unauthorized
+artifact.
+
+**Consequences:** Policy reductions require explicit confirmation and queue
+cleanup. Hold changes serialize with cleanup on an organization-scoped lock.
+Expired artifact downloads return `410 Gone`, with digest-addressed metadata
+and cleanup audit records retained. Backups of PostgreSQL and artifact storage
+must still be tested before connected dogfooding.

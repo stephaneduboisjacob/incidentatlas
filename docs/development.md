@@ -18,7 +18,7 @@ lockfile.
 7. Add an authorized timeline API and evidence detail UI.
 8. Add incidents, deterministic evidence scoring, feedback, and annotations.
 9. Add Nginx/PostgreSQL operational connectors and artifact handling.
-10. Add retention/legal hold, hardening, deployment docs, and optional AI.
+10. Add retention/legal holds, hardening, and deployment guidance; defer AI.
 
 The API also generates an offline deterministic Markdown postmortem draft.
 It requires no AI provider and separates human-confirmed factors from
@@ -37,15 +37,17 @@ cargo test --workspace
 ```
 
 The integration tests exercise tenant isolation, collector enrollment,
-idempotent ingestion, timeline scoring, human feedback, and postmortem
-evidence links. Return to the normal private PostgreSQL Compose setup after
-testing with `docker compose up -d`.
+idempotent ingestion, timeline scoring, human feedback, postmortem evidence
+links, retention cleanup, artifact integrity, and legal-hold controls. Return
+to the normal private PostgreSQL Compose setup after testing with
+`docker compose up -d`.
 
 ## Safety while dogfooding
 
 Begin in dry-run mode. Review proposed fields and redactions before enabling
-local buffering. Enable connected delivery only after server authentication,
-retention, access controls, and collector revocation are implemented.
+local buffering. Retention, access controls, and collector revocation are
+implemented. Keep connected delivery disabled until PostgreSQL and artifact
+backups have a tested restore procedure.
 
 ## Schema and operational changes
 

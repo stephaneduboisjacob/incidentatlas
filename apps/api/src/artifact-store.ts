@@ -16,7 +16,7 @@ export class ArtifactStoreError extends Error {
   }
 }
 
-function digest(content: Buffer): string {
+export function artifactDigest(content: Buffer): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
@@ -34,7 +34,7 @@ function objectPath(root: string, sha256: string): string {
 }
 
 export async function storeArtifact(content: Buffer): Promise<StoredArtifact> {
-  const sha256 = digest(content);
+  const sha256 = artifactDigest(content);
   const root = await privateRoot();
   const target = objectPath(root, sha256);
   await mkdir(dirname(target), { recursive: true, mode: 0o700 });
@@ -60,7 +60,7 @@ export async function storeArtifact(content: Buffer): Promise<StoredArtifact> {
     const metadata = await lstat(target);
     if (!metadata.isFile() || metadata.isSymbolicLink()) throw new ArtifactStoreError("integrity_failure");
     const existing = await readFile(target);
-    if (digest(existing) !== sha256) throw new ArtifactStoreError("integrity_failure");
+    if (artifactDigest(existing) !== sha256) throw new ArtifactStoreError("integrity_failure");
   } catch (error) {
     await unlink(tempPath).catch(() => undefined);
     if (error instanceof ArtifactStoreError) throw error;
@@ -79,9 +79,31 @@ export async function readArtifact(objectKey: string, expectedSha256: string): P
     const resolved = await realpath(target);
     if (!resolved.startsWith(`${root}${sep}`)) throw new ArtifactStoreError("invalid_store");
     const content = await readFile(target);
-    if (digest(content) !== expectedSha256) throw new ArtifactStoreError("integrity_failure");
+    if (artifactDigest(content) !== expectedSha256) throw new ArtifactStoreError("integrity_failure");
     return content;
   } catch (error) {
+    if (error instanceof ArtifactStoreError) throw error;
+    throw new ArtifactStoreError("storage_failed");
+  }
+}
+
+export async function removeArtifact(objectKey: string, expectedSha256: string): Promise<void> {
+  if (objectKey !== expectedSha256 || !/^[a-f0-9]{64}$/.test(objectKey)) throw new ArtifactStoreError("invalid_store");
+  const root = await privateRoot();
+  const target = objectPath(root, objectKey);
+  try {
+    const directory = await lstat(dirname(target));
+    if (!directory.isDirectory() || directory.isSymbolicLink() || !(await realpath(dirname(target))).startsWith(`${root}${sep}`)) {
+      throw new ArtifactStoreError("invalid_store");
+    }
+    const metadata = await lstat(target);
+    if (!metadata.isFile() || metadata.isSymbolicLink()) throw new ArtifactStoreError("integrity_failure");
+    const resolved = await realpath(target);
+    if (!resolved.startsWith(`${root}${sep}`)) throw new ArtifactStoreError("invalid_store");
+    if (artifactDigest(await readFile(target)) !== expectedSha256) throw new ArtifactStoreError("integrity_failure");
+    await unlink(target);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
     if (error instanceof ArtifactStoreError) throw error;
     throw new ArtifactStoreError("storage_failed");
   }

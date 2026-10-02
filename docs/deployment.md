@@ -54,8 +54,8 @@ process count, and a small private `/tmp`. The worker receives database access
 only. Database and artifact volumes are separate and persistent.
 
 Back up the PostgreSQL volume and artifact volume together. Test restore
-procedures before relying on IncidentAtlas as evidence storage. Do not enable
-connected collection of operational host sources until retention and
-backup/restore procedures are implemented and tested and collector enrollment
-and revocation are understood by the operator. The development host collector
-currently remains in local mode.
+procedures before relying on IncidentAtlas as evidence storage. Retention,
+legal holds, collector enrollment, and revocation are implemented. Do not enable
+connected collection of operational host sources until the operator has tested
+a restore procedure and reviewed the collector's selected sources. The
+development host collector currently remains in local mode.

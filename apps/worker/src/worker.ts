@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import { EventSchema, type IncidentEvent } from "@incidentatlas/event-schema";
 import { rankEvents } from "@incidentatlas/correlation";
 import { Pool, type PoolClient } from "pg";
+import { runRetentionBatch, scheduleRetentionSweeps } from "./retention.js";
 
 const projectRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../../");
 dotenv.config({ path: resolve(projectRoot, ".env"), quiet: true });
@@ -129,6 +130,7 @@ async function rebuildCorrelation(client: PoolClient, job: Job): Promise<void> {
 
 async function processJob(job: Job): Promise<void> {
   try {
+    let hasMore = false;
     if (job.job_type === "correlation.rebuild") {
       const client = await pool.connect();
       try {
@@ -141,10 +143,26 @@ async function processJob(job: Job): Promise<void> {
       } finally {
         client.release();
       }
+    } else if (job.job_type === "retention.sweep") {
+      const result = await runRetentionBatch(pool, job.organization_id);
+      hasMore = result.hasMore;
+      console.info(JSON.stringify({
+        event: "worker.retention.batch",
+        organization_id: job.organization_id,
+        events_expired: result.eventsExpired,
+        artifacts_expired: result.artifactsExpired,
+        audit_expired: result.auditExpired,
+        has_more: result.hasMore,
+      }));
     } else {
       throw new Error("unsupported_job_type");
     }
-    await pool.query("UPDATE jobs SET state = 'complete', locked_at = NULL, last_error_code = NULL, finished_at = now() WHERE id = $1", [job.id]);
+    await pool.query(
+      `UPDATE jobs SET state = $2, locked_at = NULL, last_error_code = NULL,
+                       available_at = CASE WHEN $2 = 'queued' THEN now() + interval '5 seconds' ELSE available_at END,
+                       finished_at = CASE WHEN $2 = 'complete' THEN now() ELSE NULL END WHERE id = $1`,
+      [job.id, hasMore ? "queued" : "complete"],
+    );
   } catch (error) {
     const retry = job.attempts < 5;
     const delaySeconds = Math.min(300, 2 ** job.attempts * 5);
@@ -162,8 +180,13 @@ async function processJob(job: Job): Promise<void> {
 }
 
 console.info(JSON.stringify({ event: "worker.started" }));
+let lastRetentionSchedule = 0;
 while (!stopping) {
   try {
+    if (Date.now() - lastRetentionSchedule >= 60_000) {
+      await scheduleRetentionSweeps(pool);
+      lastRetentionSchedule = Date.now();
+    }
     const job = await claimJob();
     if (job) await processJob(job);
     else await sleep(1_000, undefined, { signal: stop.signal }).catch(() => undefined);
