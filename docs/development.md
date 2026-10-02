@@ -17,7 +17,8 @@ lockfile.
 6. Add systemd then opt-in Docker lifecycle sources with local redaction.
 7. Add an authorized timeline API and evidence detail UI.
 8. Add incidents, deterministic evidence scoring, feedback, and annotations.
-9. Add Nginx/PostgreSQL operational connectors and artifact handling.
+9. Add Nginx hash-only config watching, PostgreSQL operational events, and
+   artifact handling.
 10. Add retention/legal holds, hardening, and deployment guidance; defer AI.
 
 The API also generates an offline deterministic Markdown postmortem draft.
@@ -45,9 +46,10 @@ to the normal private PostgreSQL Compose setup after testing with
 ## Safety while dogfooding
 
 Begin in dry-run mode. Review proposed fields and redactions before enabling
-local buffering. Retention, access controls, and collector revocation are
-implemented. Keep connected delivery disabled until PostgreSQL and artifact
-backups have a tested restore procedure.
+local buffering. Retention, access controls, collector revocation, and
+temporary-database restore verification are implemented. Keep connected
+delivery disabled until a verified backup has an off-host copy and recovery
+path.
 
 ## Schema and operational changes
 

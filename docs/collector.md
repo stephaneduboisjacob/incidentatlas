@@ -1,10 +1,10 @@
 # Linux collector
 
-The collector is a Rust binary with no Node.js dependency. Its initial sources
-are systemd unit lifecycle records and opt-in Docker container lifecycle
-events. It normalizes only structured fields; journal `MESSAGE` content,
-container environment, labels, logs, and application payloads are not stored
-or sent.
+The collector is a Rust binary with no Node.js dependency. Its current sources
+are systemd unit lifecycle records, explicit Nginx configuration file hashes,
+and opt-in Docker container lifecycle events. It normalizes only structured
+fields; journal `MESSAGE` content, Nginx configuration bytes, container
+environment, labels, logs, and application payloads are not stored or sent.
 
 The systemd source can be scoped with `sources.systemd_units`. When this list
 is nonempty, only the named units are recorded; an empty list allows all unit
@@ -37,6 +37,23 @@ Example scope for a shared Nginx/Docker host:
 systemd = true
 systemd_units = ["docker.service", "nginx.service"]
 docker = false
+```
+
+To detect Nginx configuration changes, enable `sources.nginx` and list exact
+files under `[watch].files`. The collector polls those regular files every five
+seconds, rejects symlinks, and hashes at most 8 MiB per file. It emits the
+configured path plus before/after SHA-256 values; it does not send snapshots or
+diffs and does not recursively traverse directories. Add only files whose
+change metadata is appropriate for the IncidentAtlas server. Nginx syntax
+validation and reload detection are not part of this source yet; systemd may
+still record `nginx.service` lifecycle changes.
+
+```toml
+[sources]
+nginx = true
+
+[watch]
+files = ["/etc/nginx/nginx.conf", "/etc/nginx/sites-available/incidentatlas"]
 ```
 
 ## Enrollment and credentials
@@ -77,6 +94,5 @@ incidentatlas-agent test-source docker
 incidentatlas-agent print-config
 ```
 
-The initial build does not yet implement Nginx file watching or PostgreSQL
-operational queries. Configuring those flags reports them as not implemented;
-it does not pretend to collect them.
+PostgreSQL operational queries are not implemented yet. Configuring that flag
+reports it as not implemented; the collector does not pretend to collect it.

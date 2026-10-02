@@ -153,6 +153,13 @@ impl Config {
             || self.sources.systemd_units.iter().any(|unit| {
                 unit.is_empty() || unit.len() > 256 || unit.chars().any(char::is_control)
             })
+            || self.sources.nginx != !self.watch.files.is_empty()
+            || self.watch.files.iter().enumerate().any(|(index, path)| {
+                !path.is_absolute()
+                    || path.as_os_str().len() > 4096
+                    || path.to_string_lossy().chars().any(char::is_control)
+                    || self.watch.files[..index].contains(path)
+            })
             || self.redaction.custom_patterns.iter().any(|pattern| {
                 pattern.name.is_empty()
                     || pattern.name.len() > 64
@@ -215,4 +222,31 @@ custom_patterns = []
 [watch]
 files = []
 "#
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nginx_watch_requires_unique_absolute_paths_and_an_enabled_source() {
+        let mut config = Config::default();
+        assert!(config.validate().is_ok());
+
+        config.sources.nginx = true;
+        config.watch.files = vec![PathBuf::from("/etc/nginx/nginx.conf")];
+        assert!(config.validate().is_ok());
+
+        config
+            .watch
+            .files
+            .push(PathBuf::from("/etc/nginx/nginx.conf"));
+        assert!(matches!(config.validate(), Err(ConfigError::Invalid)));
+
+        config.watch.files = vec![PathBuf::from("relative/nginx.conf")];
+        assert!(matches!(config.validate(), Err(ConfigError::Invalid)));
+
+        config.sources.nginx = false;
+        assert!(matches!(config.validate(), Err(ConfigError::Invalid)));
+    }
 }

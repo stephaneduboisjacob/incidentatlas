@@ -1,16 +1,23 @@
 use std::collections::{BTreeMap, HashMap};
+use std::io::ErrorKind;
 use std::io::{self, BufRead, BufReader, Read};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::{Duration, Instant};
+use std::{fs, fs::OpenOptions};
 
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 use crate::model::{OperationalEvent, Resource};
 
 const MAX_SOURCE_LINE_BYTES: usize = 64 * 1024;
+const MAX_WATCHED_FILE_BYTES: u64 = 8 * 1024 * 1024;
+const FILE_WATCH_INTERVAL: Duration = Duration::from_secs(5);
 const UNIT_STARTED: &str = "7d4958e842da4a758f6c1cdc7b36dcc5";
 const UNIT_STOPPED: &str = "39f53479d3a045ac8e11786248231fbf";
 const UNIT_FAILED: &str = "be02cf6855d2428ba40df7e9d022f03d";
@@ -378,6 +385,129 @@ fn docker_source(sender: Sender<OperationalEvent>) {
     }
 }
 
+fn file_digest(path: &Path) -> io::Result<String> {
+    let before = fs::symlink_metadata(path)?;
+    if !before.file_type().is_file() || before.len() > MAX_WATCHED_FILE_BYTES {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "watched path is not a bounded regular file",
+        ));
+    }
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
+        .open(path)?;
+    let opened = file.metadata()?;
+    if !opened.is_file() || opened.dev() != before.dev() || opened.ino() != before.ino() {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            "watched file changed during open",
+        ));
+    }
+    let mut digest = Sha256::new();
+    let mut total = 0_u64;
+    let mut buffer = [0_u8; 16 * 1024];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        total = total.saturating_add(count as u64);
+        if total > MAX_WATCHED_FILE_BYTES {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "watched file exceeds size limit",
+            ));
+        }
+        digest.update(&buffer[..count]);
+    }
+    let mut hash_hex = String::with_capacity(64);
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    for byte in digest.finalize() {
+        hash_hex.push(HEX[(byte >> 4) as usize] as char);
+        hash_hex.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    Ok(hash_hex)
+}
+
+fn nginx_file_change(
+    path: &Path,
+    before_hash: Option<&str>,
+    after_hash: Option<&str>,
+) -> Option<OperationalEvent> {
+    if before_hash == after_hash {
+        return None;
+    }
+    let change_kind = match (before_hash, after_hash) {
+        (None, Some(_)) => "create",
+        (Some(_), None) => "delete",
+        (Some(_), Some(_)) => "update",
+        (None, None) => return None,
+    };
+    let mut before = BTreeMap::new();
+    if let Some(hash) = before_hash {
+        before.insert("sha256".to_owned(), json!(hash));
+    } else {
+        before.insert("state".to_owned(), json!("missing"));
+    }
+    let mut after = BTreeMap::new();
+    if let Some(hash) = after_hash {
+        after.insert("sha256".to_owned(), json!(hash));
+    } else {
+        after.insert("state".to_owned(), json!("missing"));
+    }
+    let display_path = path.to_string_lossy().into_owned();
+    let filename = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned());
+    let action = match change_kind {
+        "create" => "created",
+        "delete" => "deleted",
+        _ => "changed",
+    };
+    Some(OperationalEvent::new(
+        "nginx",
+        "configuration",
+        "nginx.config_file_changed",
+        "warning",
+        change_kind,
+        Resource {
+            resource_type: "config_file".to_owned(),
+            id: display_path,
+            name: filename,
+        },
+        format!("Nginx configuration file {action}"),
+        crate::model::now_rfc3339(),
+        before,
+        after,
+        BTreeMap::new(),
+    ))
+}
+
+fn nginx_source(sender: Sender<OperationalEvent>, paths: Vec<PathBuf>) {
+    let mut previous = HashMap::<PathBuf, Option<String>>::new();
+    loop {
+        thread::sleep(FILE_WATCH_INTERVAL);
+        for path in &paths {
+            let current = match file_digest(path) {
+                Ok(digest) => Some(digest),
+                Err(error) if error.kind() == ErrorKind::NotFound => None,
+                Err(_) => continue,
+            };
+            let Some(old) = previous.get(path) else {
+                previous.insert(path.clone(), current);
+                continue;
+            };
+            if let Some(event) = nginx_file_change(path, old.as_deref(), current.as_deref())
+                && sender.send(event).is_err()
+            {
+                return;
+            }
+            previous.insert(path.clone(), current);
+        }
+    }
+}
+
 pub fn start_systemd(sender: Sender<OperationalEvent>, allowlist: Vec<String>) {
     thread::Builder::new()
         .name("incidentatlas-systemd".to_owned())
@@ -390,6 +520,17 @@ pub fn start_docker(sender: Sender<OperationalEvent>) {
         .name("incidentatlas-docker".to_owned())
         .spawn(move || docker_source(sender))
         .expect("Docker source thread starts");
+}
+
+pub fn start_nginx(sender: Sender<OperationalEvent>, paths: Vec<PathBuf>) {
+    thread::Builder::new()
+        .name("incidentatlas-nginx-config".to_owned())
+        .spawn(move || nginx_source(sender, paths))
+        .expect("Nginx source thread starts");
+}
+
+pub fn nginx_config_accessible(paths: &[PathBuf]) -> bool {
+    !paths.is_empty() && paths.iter().all(|path| file_digest(path).is_ok())
 }
 
 pub fn source_available(name: &str) -> bool {
@@ -464,5 +605,39 @@ mod tests {
         assert!(serialized.contains("exit_code"));
         assert!(!serialized.contains("must not be copied"));
         assert_eq!(events[0].change_kind, "failure");
+    }
+
+    #[test]
+    fn nginx_watch_events_store_hashes_without_configuration_contents() {
+        let event = nginx_file_change(
+            Path::new("/etc/nginx/nginx.conf"),
+            Some(&"a".repeat(64)),
+            Some(&"b".repeat(64)),
+        )
+        .expect("hash transition creates event");
+        let serialized = serde_json::to_string(&event).expect("serializes event");
+        assert_eq!(event.source, "nginx");
+        assert_eq!(event.category, "configuration");
+        assert_eq!(event.change_kind, "update");
+        assert!(serialized.contains(&"b".repeat(64)));
+        assert!(!serialized.contains("server_secret"));
+        assert!(nginx_file_change(Path::new("/etc/nginx/nginx.conf"), None, None).is_none());
+    }
+
+    #[test]
+    fn nginx_hash_reader_rejects_symlinks_and_never_emits_file_bytes() {
+        let directory =
+            std::env::temp_dir().join(format!("incidentatlas-nginx-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&directory).expect("creates private test directory");
+        let file_path = directory.join("nginx.conf");
+        let link_path = directory.join("linked.conf");
+        fs::write(&file_path, "server_secret=fake_config_value").expect("writes fake config");
+        std::os::unix::fs::symlink(&file_path, &link_path).expect("creates test symlink");
+
+        let hash = file_digest(&file_path).expect("reads regular file hash");
+        assert_eq!(hash.len(), 64);
+        assert!(!hash.contains("fake_config_value"));
+        assert!(file_digest(&link_path).is_err());
+        fs::remove_dir_all(directory).expect("removes generated test directory");
     }
 }

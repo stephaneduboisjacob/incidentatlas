@@ -47,8 +47,8 @@ host and must not overwrite other sites.
 Events are append-only and idempotent by event ID. The server records an event
 digest, source event ID, collector identity, and ingestion time. Artifact
 metadata stores a SHA-256 digest separately from the payload. Integrity
-checkpoints may be added when batch retention is implemented; no blockchain or
-external notarization is planned.
+checkpoints across event batches remain deferred; no blockchain or external
+notarization is planned.
 
 ## Correlation
 

@@ -28,3 +28,6 @@ record. Test fixtures use only intentionally fake secrets.
 Product analytics are opt-in and off by default. Retention for events,
 artifacts, audit data, and AI output is independently configurable. Legal hold
 prevents covered evidence from normal retention deletion.
+
+The Nginx watch source sends only the configured path and SHA-256 before/after
+values. It does not upload file contents or recursively traverse directories.

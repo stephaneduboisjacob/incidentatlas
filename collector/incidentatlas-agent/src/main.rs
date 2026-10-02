@@ -95,7 +95,7 @@ fn doctor(config: &Config) -> Result<(), &'static str> {
         json!({"check":"queue","status":"ok","depth":queue.queue_depth().map_err(|_| "queue_unavailable")?,"payload_bytes":queue.payload_bytes().map_err(|_| "queue_unavailable")?}),
         json!({"check":"systemd_journal","status":if journal_accessible() {"ok"} else {"unavailable"}}),
         json!({"check":"docker","status":if config.sources.docker { if sources::source_available("docker") {"accessible"} else {"unavailable"} } else {"disabled; Docker access is root-equivalent"}}),
-        json!({"check":"nginx_source","status":if config.sources.nginx {"not_implemented"} else {"disabled"}}),
+        json!({"check":"nginx_source","status":if config.sources.nginx {if sources::nginx_config_accessible(&config.watch.files) {"accessible"} else {"unavailable"}} else {"disabled"}}),
         json!({"check":"postgres_source","status":if config.sources.postgres {"not_implemented"} else {"disabled"}}),
         json!({"check":"credential_file","status":if std::fs::symlink_metadata(&config.server.credential_file).is_ok() {"present"} else if config.mode == Mode::Connected {"will_enroll_on_first_delivery"} else {"not_required"}}),
         json!({"check":"clock_sync","status":clock_sync_status()}),
@@ -111,9 +111,6 @@ fn doctor(config: &Config) -> Result<(), &'static str> {
     } else {
         checks.push(json!({"check":"server","status":"not_used_in_current_mode"}));
     }
-    if !config.watch.files.is_empty() {
-        checks.push(json!({"check":"configured_file_watch","status":"not_implemented"}));
-    }
     println!("{}", json!({"checks": checks}));
     Ok(())
 }
@@ -122,7 +119,7 @@ fn test_source(config: &Config, name: &str) -> Result<(), &'static str> {
     let available = match name {
         "systemd" => journal_accessible(),
         "docker" => sources::source_available("docker"),
-        "nginx" => config.watch.files.iter().any(|path| path.exists()),
+        "nginx" => config.sources.nginx && sources::nginx_config_accessible(&config.watch.files),
         "postgres" => false,
         _ => return Err("unknown_source"),
     };
@@ -172,8 +169,11 @@ fn run(config: Config) -> Result<(), &'static str> {
     if config.sources.docker {
         sources::start_docker(sender.clone());
     }
+    if config.sources.nginx {
+        sources::start_nginx(sender.clone(), config.watch.files.clone());
+    }
 
-    if config.sources.nginx || config.sources.postgres || !config.watch.files.is_empty() {
+    if config.sources.postgres {
         eprintln!("{{\"event\":\"agent.source.not_implemented\"}}");
     }
     eprintln!(

@@ -126,3 +126,18 @@ Expired artifact downloads return `410 Gone`, with digest-addressed metadata
 and cleanup audit records retained. PostgreSQL restore and artifact digest
 verification can be exercised by the operator scripts; connected dogfooding
 still waits for off-host backups.
+
+## 2026-10-02: hash-only Nginx configuration watch
+
+**Decision:** Watch only explicitly configured regular files. Poll every five
+seconds, reject symlinks and files larger than 8 MiB, and emit a path plus
+before/after SHA-256 hashes without uploading contents or diffs.
+
+**Context:** Nginx configuration changes are useful incident evidence, but
+config files can contain credentials or internal topology. Hashes preserve
+change timing while minimizing what leaves the host.
+
+**Consequences:** Operators choose which exact files may be named in event
+metadata. Syntax validation, sanitized snapshots, and recursive directory
+watches remain deferred. This host watches only its IncidentAtlas virtual-host
+file, and those events remain in the local collector queue.
