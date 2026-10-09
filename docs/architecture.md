@@ -56,3 +56,7 @@ The initial engine is deterministic and decomposable. It considers time,
 resource/service relationships, change type, and symptom alignment, then
 persists the reason for every evidence link. No AI output can exist without
 event evidence references, and AI is not required for core use.
+
+---
+
+Contact: Stephane Jacob <jacobstephane@outlook.com>

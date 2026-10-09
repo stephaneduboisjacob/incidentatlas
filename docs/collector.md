@@ -96,3 +96,7 @@ incidentatlas-agent print-config
 
 PostgreSQL operational queries are not implemented yet. Configuring that flag
 reports it as not implemented; the collector does not pretend to collect it.
+
+---
+
+Contact: Stephane Jacob <jacobstephane@outlook.com>

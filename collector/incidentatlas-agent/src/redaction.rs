@@ -114,7 +114,7 @@ mod tests {
 
     #[test]
     fn recognizes_jwt_github_and_aws_style_tokens() {
-        let input = "ghp_123456789012345678901234567890123456 AKIAABCDEFGHIJKLMNOP abcdefghij.abcdefghij.abcdefghij";
+        let input = "ghp_123456789012345678901234567890123456 AKIAABCDEFGHIJKLMNOP abcdefghij.abcdefghij.abcdefghij"; // gitleaks:allow -- synthetic redaction fixture
         let (output, _) = redact_text(input, &strict_config());
         assert!(!output.contains("ghp_"));
         assert!(!output.contains("AKIA"));

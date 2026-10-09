@@ -59,3 +59,7 @@ database to compare table counts. Backups still need to be scheduled and copied
 off-host by the operator. Encrypt backup storage for the sensitivity of
 operational and account data. The development host collector remains in local
 mode until an off-host backup copy and recovery procedure are established.
+
+---
+
+Contact: Stephane Jacob <jacobstephane@outlook.com>

@@ -30,3 +30,7 @@ hypothesis to `confirmed_by_human`.
 
 This score is a prioritization aid. It is not a probability, an AI confidence,
 or proof of causality.
+
+---
+
+Contact: Stephane Jacob <jacobstephane@outlook.com>

@@ -1,6 +1,6 @@
 [Unit]
 Description=IncidentAtlas operational change collector
-Documentation=https://incidentatlas.btcpay.exchange
+Documentation=https://incidentatlas.example.com
 After=network-online.target systemd-journald.service
 Wants=network-online.target
 

@@ -197,7 +197,7 @@ pub fn example_config() -> &'static str {
     r#"mode = "dry-run"
 
 [server]
-url = "https://incidentatlas.example.com"
+url = "http://127.0.0.1:14000"
 enrollment_token_file = "/etc/incidentatlas/enrollment-token"
 credential_file = "/var/lib/incidentatlas/credential"
 

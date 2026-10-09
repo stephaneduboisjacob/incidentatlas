@@ -57,3 +57,7 @@ Migrations are numbered SQL files and are applied deliberately. The local
 Compose database uses its own volume and does not reuse host PostgreSQL. The
 production app port is loopback-only; host Nginx configuration is managed as
 an additional virtual host after the service is ready.
+
+---
+
+Contact: Stephane Jacob <jacobstephane@outlook.com>

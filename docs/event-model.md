@@ -54,3 +54,7 @@ Sources are validated identifiers. Initial sources are `systemd`, `docker`,
 - Every tenant-owned event is scoped to exactly one organization and host.
 - The collector sets `redaction_applied` only after its local redaction path
   succeeds. Secrets and prohibited data are never accepted as evidence.
+
+---
+
+Contact: Stephane Jacob <jacobstephane@outlook.com>

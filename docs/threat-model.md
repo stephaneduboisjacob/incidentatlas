@@ -38,3 +38,7 @@ A compromised monitored host can falsify events before collection. Hashes
 provide integrity checks after capture, not proof that a source was truthful.
 Docker socket access materially increases the collector's privilege and must
 remain an explicit operator choice.
+
+---
+
+Contact: Stephane Jacob <jacobstephane@outlook.com>

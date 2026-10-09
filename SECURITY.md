@@ -33,3 +33,7 @@ Use unique production secrets, TLS, supported releases, and backups. Keep the
 collector unprivileged and grant each source only the access it needs. Review
 the threat model in [docs/threat-model.md](docs/threat-model.md) before
 enabling connectors.
+
+---
+
+Contact: Stephane Jacob <jacobstephane@outlook.com>

@@ -14,3 +14,7 @@ follow-up items are clearly marked as unrecorded for a human to complete.
 Generation writes an audit event with the template version and evidence
 counts. User-provided strings are escaped for Markdown structure and are
 downloaded as a file; the application does not render the draft as HTML.
+
+---
+
+Contact: Stephane Jacob <jacobstephane@outlook.com>

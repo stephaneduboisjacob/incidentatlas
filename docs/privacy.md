@@ -31,3 +31,7 @@ prevents covered evidence from normal retention deletion.
 
 The Nginx watch source sends only the configured path and SHA-256 before/after
 values. It does not upload file contents or recursively traverse directories.
+
+---
+
+Contact: Stephane Jacob <jacobstephane@outlook.com>

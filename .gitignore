@@ -9,3 +9,6 @@ coverage/
 *.sqlite-shm
 *.sqlite-wal
 var/
+*.zip
+.claude/
+.codex/

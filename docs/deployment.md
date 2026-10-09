@@ -1,79 +1,26 @@
-# Deployment
+# Deployment guide
 
-The Compose stack runs an app/API, a background worker, and a dedicated
-PostgreSQL 18 service. PostgreSQL has a private Compose network and persistent
-volume; it does not reuse a host database or publish a host port. The API is
-published only on `127.0.0.1:3080`, for the host Nginx virtual host. The API
-applies checked-in, numbered SQL migrations before it starts serving requests.
+This guide is a generic self-hosting outline. Replace the example hostname and paths with values for a domain and host you control. The deployment files in this repository are templates; they are not a record of a live environment.
 
-## First start
+## Requirements
 
-1. Copy `.env.example` to `.env` and replace each placeholder with a different
-   value from `openssl rand -hex 32`. Keep `.env` private and out of backups
-   unless backups are encrypted.
-2. Set `INCIDENTATLAS_PUBLIC_ORIGIN` to the public HTTPS origin.
-3. Build and start with `docker compose up -d --build`.
-4. Confirm `docker compose ps` reports the database and API healthy.
-5. Open the public origin and create the first owner with the setup token in
-   `.env`. First-run setup is permanently disabled after an account exists.
+- Linux host with Docker Compose and a supported Node.js 24 runtime.
+- Rust toolchain for building the collector.
+- PostgreSQL and an artifact store configured for the deployment.
+- A protected environment file outside the repository.
 
-Retrieve the setup token directly on the server with
-`grep '^INCIDENTATLAS_SETUP_TOKEN=' .env`; do not paste it into tickets, chat,
-or logs. Choose the account email and password during the one-time setup.
+## Deployment outline
 
-Use `docker compose logs --tail=100 api worker` for service diagnostics. Logs
-contain event names and status codes, not request bodies or credentials.
+1. Create a dedicated service account and install the application under a directory such as `/opt/incidentatlas`.
+2. Configure PostgreSQL, the artifact store, API secrets, and a public origin through protected environment variables. Do not use the example tokens as production secrets.
+3. Build the JavaScript workspaces and Rust collector from the checked-in lockfiles.
+4. Run migrations using the migration role, then start the API, worker, and web application on private interfaces.
+5. Configure Nginx or an equivalent reverse proxy with TLS for a domain you control. The sample configuration uses `incidentatlas.example.com`.
+6. Install and enroll collectors in `dry-run` mode first. Review redaction rules and collector privileges before enabling connected mode.
+7. Verify health checks, retention behavior, backup restore, audit records, and incident export procedures before connecting production hosts.
 
-For tenant and collector integration tests only, add
-`docker-compose.test.yml`; it publishes PostgreSQL to `127.0.0.1:55432` and
-does not expose it externally. Remove the override after tests with
-`docker compose down` followed by the normal production `docker compose up -d`.
+Do not upload real host inventories, production artifacts, credentials, private keys, or unredacted logs to GitHub issues or fixtures. Keep backups encrypted and access-controlled. See [the collector guide](collector.md), [privacy guide](privacy.md), and [threat model](threat-model.md).
 
-## Existing host Nginx
+## Contact
 
-Keep the host reverse proxy and other virtual hosts intact. For the ACME
-HTTP-01 bootstrap, copy `deploy/nginx/incidentatlas.http.conf` to a new
-`/etc/nginx/sites-available/incidentatlas` file, enable only that new site,
-then validate with `nginx -t` before reloading. Issue the certificate with
-Certbot's webroot authenticator at `/var/www/incidentatlas-acme` for
-`incidentatlas.btcpay.exchange`. After issuance, replace the bootstrap file
-with `deploy/nginx/incidentatlas.conf`, validate, and reload. The final vhost
-redirects HTTP to HTTPS and proxies to the loopback API port. Never overwrite
-another site's configuration.
-
-Certbot renewal should remain enabled through the host's existing timer. Its
-deploy hook reloads Nginx only after a successful renewal of this site's
-certificate; install `deploy/nginx/incidentatlas-certbot-hook.sh` into
-`/etc/letsencrypt/renewal-hooks/deploy/incidentatlas-reload-nginx`.
-
-## Operations
-
-The app container runs as the unprivileged Node user with a read-only root
-filesystem, dropped Linux capabilities, no-new-privileges, bounded memory and
-process count, and a small private `/tmp`. The worker receives database access
-only. Database and artifact volumes are separate and persistent.
-
-Back up the PostgreSQL volume and artifact volume together. Test restore
-procedures before relying on IncidentAtlas as evidence storage. Retention,
-legal holds, collector enrollment, and revocation are implemented. Keep
-connected collection of operational host sources off until the operator has
-verified a backup, copied it off-host, and reviewed the collector's selected
-sources. The development host collector currently remains in local mode.
-
-Create a quiesced, private backup and validate it with a restore into a
-temporary database using:
-
-```bash
-deploy/scripts/backup.sh /var/backups/incidentatlas
-deploy/scripts/verify-backup.sh /var/backups/incidentatlas/incidentatlas-<timestamp>
-```
-
-The backup command briefly stops the API and worker, writes a custom PostgreSQL
-dump and artifact archive into a new mode-0700 directory, records row counts
-and checksums, then restarts only services that were running before the backup.
-Collectors continue buffering locally during that interval. The verifier
-checks every artifact against its content digest and restores the database into
-a randomly named temporary database before comparing table counts. It drops
-only that temporary database. Copy verified backups off-host and encrypt them
-for the sensitivity of operational and account data. The scripts do not
-schedule backups or delete previous backup directories.
+Stephane Jacob <jacobstephane@outlook.com>

@@ -141,3 +141,7 @@ change timing while minimizing what leaves the host.
 metadata. Syntax validation, sanitized snapshots, and recursive directory
 watches remain deferred. This host watches only its IncidentAtlas virtual-host
 file, and those events remain in the local collector queue.
+
+---
+
+Contact: Stephane Jacob <jacobstephane@outlook.com>
