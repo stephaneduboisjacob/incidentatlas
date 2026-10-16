@@ -1,4 +1,8 @@
-# IncidentAtlas
+# IncidentAtlas — Explainable Incident Timelines
+
+<p align="center">
+  <img src="assets/brand/README-logo.svg" alt="IncidentAtlas — operational events mapped into an incident timeline" width="760">
+</p>
 
 A self-hostable operational change recorder for reconstructing what changed before an outage or security incident. It stores compact, redacted change events and evidence, then presents an explainable timeline for human investigation.
 
@@ -38,7 +42,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidance and [SECURITY.md
 
 ## License
 
-No license has been selected yet. Public visibility does not grant permission to reuse the code.
+This source-available project is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use is permitted under its terms; commercial use requires separate written permission.
 
 ## Contact
 

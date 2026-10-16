@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">IncidentAtlas — Find the change that mattered.</title>
+  <desc id="desc">A plotted incident route links operational events across a compact timeline.</desc>
+  <defs>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#76ECFF"/><stop offset="1" stop-color="#37B7D5"/></linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#6E9AFF"/><stop offset="1" stop-color="#5AD6D0"/></linearGradient>
+  </defs>
+  <rect x="8" y="8" width="1184" height="304" rx="40" fill="#111B2A"/>
+  <circle cx="160" cy="160" r="112" fill="#17283A"/>
+  <path d="M77 205h45l18-54 24 28 23-76 19 42h35" fill="none" stroke="#4C657C" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M82 226h158" stroke="#527089" stroke-width="4" stroke-linecap="round"/>
+  <path d="M101 226v-14M144 226v-47M187 226v-87M230 226v-34" stroke="#527089" stroke-width="4" stroke-linecap="round"/>
+  <path d="M94 184 137 151 171 179 208 103" fill="none" stroke="url(#blue)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="94" cy="184" r="8" fill="#76ECFF"/><circle cx="137" cy="151" r="8" fill="#76ECFF"/><circle cx="171" cy="179" r="8" fill="#76ECFF"/>
+  <path d="M208 85c-19 0-34 15-34 34 0 27 34 58 34 58s34-31 34-58c0-19-15-34-34-34z" fill="#233D52" stroke="url(#cyan)" stroke-width="6"/>
+  <circle cx="208" cy="118" r="9" fill="#B8F7FF"/>
+  <text x="310" y="156" fill="#F1F6FC" font-family="Inter,Arial,sans-serif" font-size="76" font-weight="750" letter-spacing="-2">IncidentAtlas</text>
+  <text x="316" y="215" fill="#9CB1C2" font-family="Inter,Arial,sans-serif" font-size="27" font-weight="600" letter-spacing="3">FIND THE CHANGE THAT MATTERED</text>
+  <path d="M316 251h190" stroke="#50CBD1" stroke-width="5" stroke-linecap="round"/>
+</svg>
